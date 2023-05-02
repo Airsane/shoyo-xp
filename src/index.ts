@@ -2,6 +2,7 @@
 export class ShoyoXp {
     private repository: RepositoryInterface;
     private rewardListeners: Function[] = [];
+    private levelListeners: Function[] = [];
 
     constructor(repository: RepositoryInterface) {
         this.repository = repository;
@@ -9,6 +10,14 @@ export class ShoyoXp {
 
     public addRewardListener(func: Function) {
         this.rewardListeners.push(func);
+    }
+
+    public addLevelListener(func: Function) {
+        this.levelListeners.push(func);
+    }
+
+    public removeRoleReward(guildId: string, level: number, reward: string): void {
+        this.repository.removeReward(guildId, level, reward);
     }
 
     public createRoleReward(guildId: string, level: number, reward: string): void {
@@ -24,6 +33,12 @@ export class ShoyoXp {
         })
     }
 
+    private handleLevel(userId: string, guildId: string, level: number): void {
+        this.levelListeners.forEach(listener => {
+            listener(userId, guildId, level);
+        })
+    }
+
     public appendXp(userId: string, guildId: string, xp: number): void {
         if (xp <= 0) {
             throw new TypeError("An amount of xp must be greater than 0")
@@ -31,9 +46,10 @@ export class ShoyoXp {
 
         const user = this.repository.getUser(userId, guildId);
         user.xp += xp;
+        const userLevel = user.level;
         user.level = Math.floor(0.1 * Math.sqrt(user.xp));
         user.lastUpdated = new Date();
-        const isLevelChange = user.level != this.repository.getUser(userId, guildId).level;
+        const isLevelChange = user.level != userLevel;
         this.repository.saveUser(user);
         if (isLevelChange) {
             this.handleRewards(userId, guildId, user.level);
@@ -45,10 +61,11 @@ export class ShoyoXp {
             throw new TypeError("A level must be greater than 0")
         }
         const user = this.repository.getUser(userId, guildId);
+        const userLevel = user.level;
         user.level += level;
         user.xp = user.level * user.level * 100;
         user.lastUpdated = new Date();
-        const isLevelChange = user.level != this.repository.getUser(userId, guildId).level;
+        const isLevelChange = user.level != userLevel;
         this.repository.saveUser(user);
         if (isLevelChange) {
             this.handleRewards(userId, guildId, user.level);
@@ -62,9 +79,10 @@ export class ShoyoXp {
 
         const user = this.repository.getUser(userId, guildId);
         user.xp = xp;
+        const userLevel = user.level;
         user.level = Math.floor(0.1 * Math.sqrt(user.xp));
         user.lastUpdated = new Date();
-        const isLevelChange = user.level != this.repository.getUser(userId, guildId).level;
+        const isLevelChange = user.level != userLevel;
         this.repository.saveUser(user);
         if (isLevelChange) {
             this.handleRewards(userId, guildId, user.level);
@@ -76,10 +94,11 @@ export class ShoyoXp {
             throw new TypeError("A level must be greater than 0")
         }
         const user = this.repository.getUser(userId, guildId);
+        const userLevel = user.level;
         user.level = level;
         user.xp = user.level * user.level * 100;
         user.lastUpdated = new Date();
-        const isLevelChange = user.level != this.repository.getUser(userId, guildId).level;
+        const isLevelChange = user.level != userLevel
         this.repository.saveUser(user);
         if (isLevelChange) {
             this.handleRewards(userId, guildId, user.level);
@@ -121,7 +140,7 @@ export interface RepositoryInterface {
 
     addReward(guildId: string, level: number, reward: string): void;
 
-    removeReward(guildId: string, level: number): void;
+    removeReward(guildId: string, level: number,reward: string): void;
 
 }
 
@@ -137,10 +156,15 @@ export class FileRepository implements RepositoryInterface {
     private rewards: RewardInterface[] = [];
 
     constructor(filePath: string) {
+        this.createFilePathIfNotExists(filePath);
         this.usersFilePath = path.join(filePath, this.userFileName);
         this.rewardsFilePath = path.join(filePath, this.rewardsFileName);
         this.loadUsersFile();
         this.loadRewardsFile();
+    }
+
+    private createFilePathIfNotExists(filePath: string): void {
+        fs.mkdirSync(filePath, {recursive: true});
     }
 
     public deleteUser(userId: string, guildId: string): void {
@@ -211,8 +235,8 @@ export class FileRepository implements RepositoryInterface {
         return this.rewards.filter(reward => reward.guildId === guildId);
     }
 
-    public removeReward(guildId: string, level: number): void {
-        this.rewards = this.rewards.filter(reward => reward.guildId !== guildId && reward.level !== level);
+    public removeReward(guildId: string, level: number,rewardID:string): void {
+        this.rewards = this.rewards.filter(reward => reward.guildId !== guildId && reward.level !== level && reward.reward !== rewardID);
         this.saveRewardsFile();
     }
 
